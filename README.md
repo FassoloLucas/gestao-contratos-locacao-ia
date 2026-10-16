@@ -97,4 +97,4 @@ Componentes, fluxos, segurança e desempenho em [docs/arquitetura.md](docs/arqui
 
 Lucas Anacleto Fassolo, especialista contábil e desenvolvedor · [github.com/FassoloLucas](https://github.com/FassoloLucas)
 
-Este repositório contém apenas documentação. O código da plataforma não é distribuído.
+© 2026 Lucas Fassolo. Todos os direitos reservados. Este repositório contém apenas documentação demonstrativa de portfólio; a reprodução do texto, arquitetura ou imagens sem autorização é proibida.
