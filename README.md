@@ -1,24 +1,32 @@
-# Gestão de Contratos de Locação com IA
+# Plataforma de Gestão Contábil e Fiscal
 
-Sistema web que centraliza os contratos de aluguel das filiais de uma rede varejista. Ele lê o PDF do contrato com IA, calcula reajustes por índice econômico, acompanha os prazos de renovatória e concilia os pagamentos lançados no ERP.
+Plataforma web interna que reúne, em um só lugar, as consultas, os relatórios e as conferências das áreas de **Contratos, Comercial, Financeiro, Contabilidade, Fiscal e Orçamento** de uma rede varejista. Ela lê os dados direto do ERP (TOTVS Consinco, em Oracle), aplica as regras contábeis e fiscais de cada rotina e entrega o resultado pronto na tela, em Excel, PDF ou ZIP. Uma assistente de IA responde perguntas sobre o que está na tela, dentro das permissões de quem pergunta.
 
-> **Sobre este repositório:** o sistema foi desenvolvido para uso interno de uma empresa e o código-fonte é privado. Aqui ficam a arquitetura, as decisões técnicas e as telas, todas capturadas com dados fictícios. Apresento o código em entrevista, se for útil.
+> **Sobre este repositório:** a plataforma foi criada para uso interno de uma empresa e o código-fonte é privado. Aqui ficam a visão do produto, a arquitetura, as regras de negócio e as telas, todas capturadas com dados fictícios. Apresento o código em entrevista, se for útil.
+
+## Em números
+
+- 6 módulos de negócio e um de administração
+- Mais de 55 telas e 201 rotas de API
+- 1.058 testes de backend em 60 arquivos e 367 testes de frontend, todos passando
+- 86 versões entregues entre agosto e outubro de 2026, com a plataforma em uso
+- Projetada e desenvolvida por uma pessoa, do backend às regras contábeis
 
 ## O problema
 
-Uma rede com dezenas de lojas alugadas acumula contratos em PDF, cada um com seu índice de reajuste, data de aniversário e prazo de renovação. Sem controle central, o reajuste vira conta manual, o prazo da ação renovatória (Lei 8.245/91, art. 51) corre sem alerta e os pagamentos registrados no ERP ficam desconectados do contrato que os originou.
+Relatórios como DRE, livro razão, consumo e notas de orçamento eram montados à mão a partir de extrações do ERP. Cada pessoa aplicava os critérios do seu jeito (sinal da DRE, lançamento de encerramento, data de corte), a conferência das notas de entrada era feita por amostragem e controles como arrendamento, depreciação e DRE por loja viviam em planilhas soltas. A plataforma substitui esse trabalho por regras escritas uma vez e aplicadas sempre do mesmo jeito.
 
-## O que o sistema faz
+## Módulos
 
-- **Importação de contrato por IA.** O usuário envia o PDF e o modelo extrai locador, valor, vigência, índice, data de reajuste e dia de vencimento, além de gerar um resumo. O contrato entra no sistema já estruturado.
-- **Renovação com herança de histórico.** Ao importar a renovação de um contrato, o novo documento herda a linha do tempo do anterior.
-- **Reajustes.** Cálculo por IGP-M, IPCA, INPC ou IGP-DI em dois modos: reajuste do valor atual e correção do histórico desde o início do contrato, com a memória de cálculo de cada aniversário. O resultado pode ser aplicado ao contrato, com registro automático no histórico.
-- **Painel de índices.** Variação mensal e acumulado de 12 meses dos quatro índices, obtidos de uma API pública por meio de um proxy no backend.
-- **Extrato do contrato.** Linha do tempo com criação, reajustes, alterações, pagamentos e eventos manuais (renovatória, rescisão). Exclusões são lógicas, com motivo, autor e data; excluir um reajuste devolve ao aluguel o valor anterior.
-- **Alertas de renovatória.** Contagem regressiva até a abertura do prazo de renovação e agrupamento dos contratos por filial, ano de vencimento ou ano de renovatória.
-- **Conciliação com o ERP.** Consulta somente leitura ao banco Oracle do ERP para listar títulos de aluguel e notas com IR retido por período e locador. Os títulos selecionados são vinculados ao contrato e passam a aparecer no extrato.
-- **Assistente de IA.** Chat que conhece a carteira de contratos, os índices e o histórico da conversa. Responde sobre vencimentos, valores e reajustes; quando a pergunta envolve cálculo, o backend faz a conta antes e o modelo só explica.
-- **Administração.** Cadastro de filiais por empresa do grupo e troca da chave da IA pelo painel, sem reiniciar o servidor.
+- **Contratos.** Contratos de aluguel das lojas: importação do PDF com leitura por IA, reajuste por IGP-M, IPCA, INPC ou IGP-DI, alertas de renovatória, linha do tempo auditável e vínculo dos títulos pagos no ERP.
+- **Comercial.** Acordos com fornecedores, indicadores, inadimplência com justificativa por título e análises de conformidade das baixas com IA.
+- **Financeiro.** Tarifas bancárias, fluxo de caixa do fundo fixo, conciliação pedido a pedido com o iFood e cancelamentos de itens no PDV.
+- **Contabilidade.** Consumo, notas de orçamento, agenda de obrigações, calculadora de tributos por regime, livro razão, sete páginas de DRE (inclusive por loja), arrendamento pelo CPC 06 e controle de depreciação com fechamento por competência.
+- **Fiscal.** Conferência item a item do XML das NF-e de entrada contra o lançamento no ERP, painel e download em lote do portal NDD, F100 da EFD-Contribuições, FCP, DIFAL, emissões canceladas e inutilizadas, documentos por CGO, extrator de XML e resumo do SPED.
+- **Orçamento.** Orçamento anual por setor contra o consumo contábil real, com projeção do ano, manutenção do vínculo conta → setor e links de consulta por setor.
+- **Administração.** Usuários e módulos liberados, configuração da IA e monitor de uso.
+
+Detalhes de cada tela em [docs/modulos.md](docs/modulos.md).
 
 ## Telas
 
@@ -26,12 +34,13 @@ Uma rede com dezenas de lojas alugadas acumula contratos em PDF, cada um com seu
 Depois de capturar as telas com dados fictícios, salve as imagens em docs/img/
 com os nomes abaixo e remova as linhas de comentário desta seção.
 
-![Painel de contratos e índices](docs/img/dashboard.png)
-![Importação de contrato por IA](docs/img/importacao-pdf.gif)
-![Cálculo de reajuste com memória de cálculo](docs/img/reajuste.png)
-![Extrato e linha do tempo do contrato](docs/img/extrato.png)
+![Home com os módulos](docs/img/home.png)
+![Dashboard da DRE](docs/img/dre-dashboard.png)
+![Conferência XML x ERP](docs/img/conferencia-xml.png)
+![Arrendamento CPC 06](docs/img/arrendamento.png)
+![Orçamento por setor](docs/img/orcamento.png)
+![Importação de contrato por IA](docs/img/importacao-contrato.gif)
 ![Assistente de IA](docs/img/assistente.png)
-![Conciliação com o ERP](docs/img/conciliacao-erp.png)
 -->
 
 *Todas as telas usam dados fictícios gerados para demonstração.*
@@ -40,49 +49,52 @@ com os nomes abaixo e remova as linhas de comentário desta seção.
 
 ```mermaid
 flowchart LR
-    U[Usuário no navegador] --> FE[Frontend SPA<br/>JavaScript + Tailwind]
-    FE -- login --> FA[Firebase Auth]
-    FE -- REST + Bearer token --> API[API FastAPI<br/>Docker no Render]
-    API -- valida token e permissões --> FB[(Firebase Auth<br/>+ Firestore)]
-    API -- Beanie ODM --> M[(MongoDB Atlas)]
-    API -- leitura, oracledb async --> O[(Banco Oracle do ERP)]
-    API -- PDF + prompt --> G[Google Gemini 2.5 Flash]
-    API -- proxy --> I[API pública de índices<br/>IGP-M, IPCA, INPC, IGP-DI]
+    U[Usuário no navegador] --> FE[Frontend<br/>HTML, CSS, JavaScript, Chart.js]
+    FE --> API[API FastAPI<br/>201 rotas]
+    API -- confere login e módulo a cada requisição --> FB[(Firebase Auth<br/>+ Firestore)]
+    API -- somente leitura, pool de conexões --> O[(ERP Consinco<br/>Oracle)]
+    API -- cadastros da plataforma --> M[(MongoDB)]
+    API -- XML das NF-e de entrada --> N[Portal NDD]
+    API -- contexto da tela, sem segredos --> IA[Groq, com Gemini de reserva]
+    API -- índices econômicos --> IP[Ipeadata]
+    API --> X[Excel, PDF, PNG, CSV, ZIP<br/>e layout de importação do ERP]
 ```
 
-Fluxos, modelo de dados e API detalhados em [docs/arquitetura.md](docs/arquitetura.md).
+Componentes, fluxos, segurança e desempenho em [docs/arquitetura.md](docs/arquitetura.md).
+
+## Destaques
+
+**Regras contábeis escritas no código.** O lançamento de encerramento de 31/12 sai da DRE e do Orçamento e fica no Livro Razão. A DRE usa crédito menos débito, para que variação positiva seja sempre melhora; o razão usa débito menos crédito com natureza D/C. A cobertura documental das despesas é medida contra o débito da conta, porque rateios e estornos reduzem o saldo e inflariam o percentual. Todas as regras estão em [docs/regras-contabeis-e-fiscais.md](docs/regras-contabeis-e-fiscais.md).
+
+**Conferência fiscal que entende o documento.** A comparação XML × ERP soma o FCP ao ICMS antes de comparar, converte unidade comercial em tributável, calcula em decimal com tolerância de R$ 0,02 e ignora diferença de PIS/COFINS quando o CST não gera crédito. Dado ausente vira "dados incompletos" e fica fora da contagem de divergências.
+
+**CPC 06 e depreciação que fecham no centavo.** No arrendamento, o arredondamento é feito nos saldos acumulados, para que cada mês fique a até um centavo do valor exato e os saldos zerem no fim do contrato. Na depreciação, o último mês lança o residual e a conciliação com o saldo do ERP não tem tolerância. Competências fechadas bloqueiam eventos retroativos até serem reabertas.
+
+**IA com escopo controlado.** A assistente recebe apenas o contexto resumido da tela aberta, descarta campos que pareçam senha, token ou chave e responde só sobre módulos que o usuário pode ver. No módulo de contratos, quando a pergunta pede um reajuste, o backend faz a conta e o modelo só explica. O provedor principal é o Groq, com o Gemini como reserva.
+
+**Desempenho medido.** O PDF do livro razão foi reescrito: 2.172 lançamentos saem em menos de 1 segundo, contra 45 segundos antes. O resumo do SPED lê cerca de 340 MB no próprio navegador em cerca de 9 segundos, sem ocupar o servidor. Consultas pesadas ao Oracle têm teto de 60 segundos e são divididas por filial quando o volume exige.
+
+**Segurança por módulo.** Toda rota confere a permissão do módulo; login, situação e permissões são reavaliados a cada requisição, então bloquear um usuário encerra as sessões dele na hora. O ERP é acessado só para leitura e uploads têm limite de tamanho e verificação antes da leitura.
 
 ## Stack
 
-- **Backend:** Python 3.11, FastAPI, Pydantic, Beanie (ODM assíncrono sobre Motor), httpx
-- **Dados:** MongoDB Atlas; Oracle do ERP via python-oracledb assíncrono
-- **IA:** Google Gemini 2.5 Flash pelo SDK google-genai
-- **Autenticação:** Firebase Authentication (e-mail/senha e Google) e Firestore para listas de acesso
-- **Frontend:** JavaScript com ES Modules, sem framework, Tailwind CSS e DOMPurify
-- **Infra:** Docker (python:3.11-slim) no Render
+- **Backend:** Python, FastAPI, pandas, python-oracledb, Beanie/MongoDB
+- **Relatórios:** openpyxl, XlsxWriter, WeasyPrint, ReportLab
+- **Frontend:** HTML, CSS e JavaScript sem framework, Chart.js
+- **Autenticação:** Firebase Authentication e Firestore
+- **IA:** Groq e Google Gemini
+- **Integrações:** ERP TOTVS Consinco (Oracle), portal NDD de NF-e, Ipeadata
+- **Testes:** 1.058 testes de backend e 367 de frontend, sem tocar nos bancos de produção
 
-## Destaques técnicos
+## Linha do tempo
 
-**A IA conversa, o Python calcula.** Modelos de linguagem erram aritmética com frequência. Quando a pergunta ao assistente pede um reajuste, o backend detecta a intenção, calcula o valor com a série histórica do índice e injeta o resultado, com o passo a passo, no prompt. O modelo apenas redige a resposta.
-
-**Extração estruturada de PDF.** O PDF vai inteiro para o modelo, que devolve JSON. Como a saída de um LLM nem sempre é JSON válido, a API isola o objeto, corrige quebras de linha e vírgulas ausentes e normaliza valores no formato brasileiro ("1.234,56") e datas antes de gravar.
-
-**Regra de reajuste explícita e auditável.** O reajuste ocorre no aniversário do contrato e usa o índice acumulado nos 12 meses encerrados no mês anterior. Índice negativo ou zero mantém o valor. Cada aniversário gera uma linha de memória de cálculo.
-
-**Histórico como trilha de auditoria.** O histórico fica aninhado no documento do contrato. Nenhum evento é apagado de fato: a exclusão registra motivo, autor e data, e excluir um reajuste reverte o aluguel ao valor anterior. A primeira versão usava PostgreSQL com SQLAlchemy; a atual usa MongoDB com Beanie, e contrato e histórico viraram um único documento.
-
-**Segurança em camadas.** O backend valida o token do Firebase com checagem de revogação e, em seguida, exige e-mail verificado, domínio corporativo, presença em uma lista de acesso no Firestore e perfil de administrador para as rotas sensíveis. O frontend encerra a sessão após 10 minutos de inatividade (exceto durante um upload) e sanitiza a saída do chat com DOMPurify. O acesso ao ERP é somente leitura, com bind variables.
-
-**Configuração da IA a quente.** A chave do Gemini pode ser trocada pelo painel. O valor gravado no banco tem precedência sobre a variável de ambiente, e o cliente é recriado sob um lock assíncrono, sem reiniciar o servidor.
-
-## Próximos passos
-
-- Testes automatizados para a regra de reajuste e para a extração de PDF
-- Mover os PDFs, hoje em base64 dentro do documento, para armazenamento de objetos
-- Concluir o módulo financeiro, ainda em construção
+- **Jan/2026:** concepção e primeiro módulo (contratos de aluguel com IA)
+- **Ago/2026:** histórico de versões começa com a plataforma em uso; DRE
+- **Set/2026:** livro razão, módulo fiscal com conferência XML e integração NDD, orçamento, FCP e DIFAL, análise de despesas, arrendamento e depreciação
+- **Out/2026:** emissões canceladas, resumo do SPED, links de orçamento por setor, revisão de segurança, DRE por loja e consulta de fornecedores
 
 ## Autor
 
-Lucas Anacleto Fassolo · [github.com/FassoloLucas](https://github.com/FassoloLucas)
+Lucas Anacleto Fassolo, especialista contábil e desenvolvedor · [github.com/FassoloLucas](https://github.com/FassoloLucas)
 
-Este repositório contém apenas documentação. O código do sistema não é distribuído.
+Este repositório contém apenas documentação. O código da plataforma não é distribuído.

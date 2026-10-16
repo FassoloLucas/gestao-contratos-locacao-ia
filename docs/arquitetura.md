@@ -2,68 +2,110 @@
 
 ## Visão geral
 
-O backend é uma API FastAPI que também serve o frontend estático. O frontend é uma SPA em JavaScript puro, organizada em componentes que devolvem HTML (dashboard, extrato, reajustes, filiais, importação, assistente, administração). Todo pedido à API carrega o ID token do Firebase no cabeçalho `Authorization`.
-
-| Camada | Responsabilidade |
-| --- | --- |
-| Frontend | Estado da aplicação, renderização dos módulos, tema claro/escuro, logout por inatividade |
-| API FastAPI | Regras de negócio, cálculo de reajuste, orquestração da IA, autorização |
-| MongoDB (Beanie) | Contratos com histórico aninhado, filiais, pagamentos, configurações |
-| Oracle do ERP | Fonte somente leitura de títulos e notas de despesa |
-| Gemini | Extração de dados do PDF e respostas do assistente |
-| Firebase | Autenticação e listas de acesso |
-
-## Importação de contrato
+O usuário abre a plataforma no navegador, sem instalar nada. A tela conversa com uma API FastAPI, que confere quem está pedindo, busca os dados nas fontes, aplica as regras e devolve o resultado para a tela ou como arquivo. O mesmo servidor entrega o frontend estático.
 
 ```mermaid
-sequenceDiagram
-    actor U as Usuário
-    participant FE as Frontend
-    participant API as API FastAPI
-    participant G as Gemini
-    participant DB as MongoDB
-
-    U->>FE: Envia PDF, empresa e filial
-    FE->>API: POST /contratos/upload-pdf
-    API->>G: PDF + instruções de extração (saída JSON)
-    G-->>API: JSON com locador, valor, datas, índice e resumo
-    API->>API: Isola e corrige o JSON, normaliza valores e datas
-    alt É renovação de um contrato existente
-        API->>DB: Lê o contrato anterior
-        API->>API: Herda o histórico e registra evento RENOVAÇÃO
-        API->>DB: Remove o contrato anterior
-    else Contrato novo
-        API->>API: Registra evento CRIAÇÃO
+flowchart LR
+    subgraph Navegador
+        FE[Telas por módulo<br/>Chart.js]
+        LOC[Extrator XML e Resumo SPED<br/>processados no próprio navegador]
     end
-    API->>DB: Grava contrato + PDF
-    API-->>FE: status
+    subgraph Servidor
+        API[API FastAPI]
+        REG[Regras contábeis e fiscais]
+        EXP[Geração de Excel, PDF, PNG, CSV, ZIP]
+        FILA[Fila de downloads do NDD]
+        MON[Monitor de uso]
+    end
+    FE --> API
+    API --> REG --> EXP
+    API --> FILA
+    API --> MON
+    API -->|somente leitura| ERP[(ERP Consinco / Oracle)]
+    API --> DB[(MongoDB)]
+    API --> FB[(Firebase Auth + Firestore)]
+    FILA --> NDD[Portal NDD]
+    API --> IA[Groq / Gemini]
+    API --> IPEA[Ipeadata]
 ```
 
-## Autenticação e autorização
+## Fontes de dados
+
+- **ERP (Oracle):** saldos e lançamentos contábeis, plano de contas, notas fiscais, títulos a pagar e a receber, acordos e cadastros. Acesso somente leitura; a plataforma não grava nada no ERP.
+- **MongoDB:** o que é da própria plataforma: contratos e PDFs, pagamentos vinculados, orçamento e vínculo conta → setor, contratos e fechamentos do arrendamento, bens e competências da depreciação, aluguel fixo e observações da DRE por loja, agenda de obrigações, empresas fiscais e apurações, CMV gerencial, justificativas de inadimplência, configurações de IA e histórico do monitor.
+- **Firebase:** contas de acesso, situação (ativa ou bloqueada) e módulos liberados, conferidos a cada requisição.
+- **Portal NDD:** catálogo e XML autorizado das NF-e de entrada. XMLs e listagens baixados ficam guardados no servidor e são reaproveitados por todos.
+- **Groq e Gemini:** respostas da assistente, leitura de contratos em PDF e análises em texto. Recebem só o contexto da tela, com dados sensíveis filtrados.
+- **Ipeadata:** séries de IGP-M, IPCA, INPC e IGP-DI para os reajustes.
+- **Arquivos do usuário:** XML, ZIP e o .txt do SPED, lidos no navegador pelo Extrator XML e pelo Resumo SPED, sem envio ao servidor.
+
+## Saídas
+
+- **Excel:** consumo, notas de orçamento, tarifas, inadimplência, DRE, DRE por loja, arrendamento, depreciação, conferência XML, FCP, emissões canceladas, fornecedores, extrator XML e conciliação iFood.
+- **Layout de importação do ERP:** lançamentos da depreciação e reclassificação do imobilizado.
+- **PDF:** DRE, dashboard da DRE, livro razão, tarifas e dashboard comercial.
+- **PNG:** blocos do dashboard da DRE para apresentações.
+- **CSV e ZIP:** itens do DIFAL, XMLs do NDD em lote e o pacote da conciliação iFood.
+
+## Segurança
 
 ```mermaid
 sequenceDiagram
     actor U as Usuário
     participant FE as Frontend
     participant FA as Firebase Auth
-    participant API as API FastAPI
+    participant API as API
     participant FS as Firestore
 
-    U->>FE: Login (e-mail/senha ou Google)
+    U->>FE: Login (e-mail/senha ou Google corporativo)
     FE->>FA: Autentica
     FA-->>FE: ID token
     FE->>API: Requisição com Bearer token
-    API->>FA: verify_id_token(check_revoked=True)
-    API->>API: E-mail verificado? Domínio corporativo?
-    API->>FS: Usuário está na lista de acesso? É administrador?
-    API-->>FE: 200 ou 401/403
+    API->>FA: Valida token (com revogação)
+    API->>FS: Usuário ativo? Módulo liberado? Administrador?
+    API-->>FE: Resposta ou 401/403
 ```
 
-## Assistente de IA
+- Login só com e-mail do domínio corporativo e endereço verificado.
+- Toda rota confere a permissão do módulo. Login e permissões são reavaliados a cada requisição: uma mudança de acesso vale na requisição seguinte e bloquear um usuário encerra as sessões dele.
+- Perfis: usuário (consulta e exporta os módulos liberados), administrador (escrita administrativa, fechamento de competências, usuários) e link de setor (só o painel de orçamento daquele setor e ano, revogável).
+- Senhas e chaves ficam no servidor; a tela de IA mostra só se a chave está configurada.
+- A assistente descarta campos que pareçam senha, token ou chave antes de enviar o contexto ao modelo.
+- Uploads com limite de tamanho e verificação antes da leitura.
+- Sessão encerrada após 30 minutos sem atividade, exceto durante o envio de arquivo.
+- O monitor registra quem acessou o quê, quando, quanto tempo levou e se deu certo, sem guardar os filtros usados, por 7 dias.
 
-A cada pergunta, a API monta um contexto com a data de hoje, as últimas mensagens da conversa, as filiais, um dossiê de cada contrato (dados principais, resumo do PDF e últimos eventos do histórico) e as séries dos índices enviadas pelo frontend. Se a pergunta pede reajuste de um contrato, o cálculo é feito em Python antes da chamada ao modelo e entra no prompt como dado pronto, com a memória de cálculo. O frontend exibe uma mensagem de espera conforme a intenção detectada e sanitiza a resposta antes de renderizar.
+## Desempenho
 
-## Regra de reajuste
+- Consultas ao Oracle têm teto de 60 segundos. Quando o volume exige, a consulta é dividida (uma filial por vez no FCP e no DIFAL) ou guardada em cache por tempo definido (DRE, DRE por loja, orçamento, análise de despesas, dashboard comercial e plano de contas). No orçamento, o ano corrente fica 10 minutos em cache e anos anteriores, 1 hora.
+- Excel, PDF e chamadas de IA rodam em paralelo, sem travar os outros usuários, com pool de até 40 conexões ao Oracle.
+- O livro razão pagina na própria consulta (200 lançamentos por página). O PDF foi reescrito: 2.172 lançamentos em menos de 1 segundo, contra 45 segundos antes.
+- Exportações grandes têm limite de segurança: o PDF do razão recusa mais de 200 mil lançamentos e a visão analítica de fornecedores para em 50 mil itens.
+- O Extrator XML e o Resumo SPED leem os arquivos no navegador: cerca de 340 MB de SPED em cerca de 9 segundos, sem ocupar o servidor.
+- Downloads do NDD: cada pessoa tem sua tarefa, até 10 usam o portal ao mesmo tempo e as demais aguardam na fila, com limite global de 8 requisições por segundo.
+
+## Exemplo de fluxo: importação de contrato por IA
+
+```mermaid
+sequenceDiagram
+    actor U as Usuário
+    participant API as API
+    participant G as Modelo de IA
+    participant DB as MongoDB
+
+    U->>API: PDF + empresa + filial
+    API->>G: PDF + instruções de extração (saída JSON)
+    G-->>API: locador, valor, datas, índice, vencimento, resumo
+    API->>API: Isola e corrige o JSON, normaliza valores BR e datas
+    alt Renovação de contrato existente
+        API->>API: Herda o histórico do anterior e registra RENOVAÇÃO
+    else Contrato novo
+        API->>API: Registra CRIAÇÃO
+    end
+    API->>DB: Grava contrato + PDF
+```
+
+Regra de reajuste usada nos contratos:
 
 ```
 para cada aniversário do contrato até hoje:
@@ -73,87 +115,13 @@ para cada aniversário do contrato até hoje:
     registrar a linha da memória de cálculo
 ```
 
-O modo "reajustar valor atual" aplica um único índice a um valor informado. Aplicar o resultado ao contrato gera um evento REAJUSTE com o índice usado; excluir esse evento restaura o valor anterior.
+## Qualidade
 
-## Modelo de dados
+- 1.058 testes de backend em 60 arquivos, cobrindo DRE, DRE por loja, orçamento, livro razão, arrendamento, depreciação, conferência fiscal, NDD, F100, FCP, DIFAL, emissões canceladas, fornecedores, autenticação, usuários, segurança, monitor e assistente. Rodam sem tocar nos bancos de produção.
+- 367 testes de frontend cobrindo cálculos, filtros, estado da tela e exportações.
+- Valores conferidos contra fontes oficiais: consumo do orçamento contra o balancete, FCP e DIFAL contra a apuração, resumo do SPED contra o E110.
+- Documentação técnica interna com arquitetura, instalação e operação, manual das telas, regras de cada módulo, integrações fiscais, segurança, referência de API e modelos de dados.
 
-```mermaid
-classDiagram
-    class Contrato {
-        empresa
-        filial
-        locador
-        fiador
-        valor_aluguel
-        dia_vencimento
-        data_inicio
-        data_fim
-        data_reajuste
-        indice_reajuste
-        status_renovatoria
-        resumo_ia
-        pdf_content
-        historico[]
-    }
-    class EventoHistorico {
-        data_evento
-        tipo_evento
-        descricao
-        usuario
-        is_deleted
-        deletion_reason
-        deleted_at
-        deleted_by
-    }
-    class Filial {
-        empresa
-        nome
-    }
-    class Pagamento {
-        contrato_id
-        data_pagamento
-        valor_pago
-        mes_referencia
-    }
-    class Configuracao {
-        chave
-        valor
-    }
-    Contrato "1" *-- "n" EventoHistorico : aninhado
-    Contrato "1" -- "n" Pagamento
-    Filial "1" -- "n" Contrato
-```
+## Stack
 
-Tipos de evento: CRIAÇÃO, RENOVAÇÃO, REAJUSTE, ALTERAÇÃO MANUAL, AJUSTE MANUAL, ALTERAÇÃO, PAGAMENTO, PAGAMENTO_ERP, VINCULACAO_ERP e eventos manuais (renovatória, rescisão, outros).
-
-## API
-
-Todas as rotas exigem autenticação.
-
-**Contratos**
-
-- `GET /contratos/` lista contratos
-- `GET /contratos/{id}` detalhe com histórico e pagamentos
-- `PATCH /contratos/{id}` atualização parcial com registro automático no histórico
-- `DELETE /contratos/{id}` exclusão
-- `POST /contratos/upload-pdf` importação por IA, inclusive renovação
-- `POST /contratos/contratos/{id}/replace-pdf` troca o PDF e reextrai os dados
-- `POST /contratos/historico/manual` evento manual
-- `POST /contratos/historico/{id}/soft-delete` exclusão lógica de evento
-- `POST /contratos/calcular-reajuste` correção desde o início do contrato
-- `POST /contratos/reajustar-valor-atual` reajuste de um valor informado
-- `GET /contratos/indices-proxy` séries de índices econômicos
-- `POST /contratos/chat` assistente de IA
-- `GET|POST|DELETE /contratos/filiais` cadastro de filiais
-
-**Pagamentos**
-
-- `POST /pagamentos/{contrato_id}` registra pagamento
-- `DELETE /pagamentos/{id}` remove pagamento
-- `GET /pagamentos/locadores` locadores com títulos de aluguel quitados no período (ERP)
-- `GET /pagamentos/consulta-pagamentos-aluguel` notas com IR retido por período e locador (ERP)
-- `POST /pagamentos/vincular-a-contrato` vincula títulos do ERP ao contrato
-
-## Deploy
-
-A imagem Docker parte de `python:3.11-slim`, instala as dependências e sobe o Uvicorn na porta 8000. O Render executa o container e injeta as variáveis de ambiente (MongoDB, Oracle, Gemini e credenciais do Firebase em JSON). Em desenvolvimento, as mesmas variáveis vêm de um arquivo `.env` fora do controle de versão.
+Python, FastAPI, pandas, python-oracledb, Beanie/MongoDB, openpyxl, XlsxWriter, WeasyPrint, ReportLab, Firebase Authentication e Firestore, Groq, Google Gemini, HTML, CSS, JavaScript e Chart.js.
